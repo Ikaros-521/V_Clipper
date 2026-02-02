@@ -36,8 +36,15 @@ BASE_URL = "http://localhost:8700"
 # 1. 上传视频
 with open("my_video.mp4", "rb") as f:
     response = requests.post(f"{BASE_URL}/upload", files={"file": f})
-    file_id = response.json()["file_id"]
+    data = response.json()
+    file_id = data["file_id"]
+    video_info = data["video_info"]
+    
     print(f"上传成功，File ID: {file_id}")
+    print(f"视频时长: {video_info['duration']}秒")
+    print(f"分辨率: {video_info['width']}x{video_info['height']}")
+    print(f"帧率: {video_info['fps']} fps")
+    print(f"文件大小: {video_info['size_mb']} MB")
 
 # 2. 切片视频（使用 start + duration）
 response = requests.get(f"{BASE_URL}/clip", params={
@@ -128,6 +135,43 @@ print(f"视频URL（5-15秒）: {video_url}")
 # vlm_result = analyze_video_with_vlm(video_url)
 ```
 
+### 示例 2.2: 查询视频信息
+
+```python
+import requests
+
+BASE_URL = "http://localhost:8700"
+
+def get_video_info(file_id: str):
+    """获取已上传视频的详细信息"""
+    response = requests.get(f"{BASE_URL}/video/{file_id}")
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        raise Exception(f"获取视频信息失败: {response.text}")
+
+# 使用示例
+file_id = "your_file_id_here"
+info = get_video_info(file_id)
+
+print(f"文件名: {info['filename']}")
+print(f"时长: {info['video_info']['duration']}秒")
+print(f"分辨率: {info['video_info']['width']}x{info['video_info']['height']}")
+print(f"帧率: {info['video_info']['fps']} fps")
+print(f"编码: {info['video_info']['codec']}")
+print(f"比特率: {info['video_info']['bitrate_kbps']} kbps")
+print(f"大小: {info['video_info']['size_mb']} MB")
+
+# 根据视频时长动态切片
+duration = info['video_info']['duration']
+clip_length = 10  # 每段10秒
+
+for start in range(0, int(duration), clip_length):
+    clip_url = get_video_clip_url(file_id, start=start, duration=clip_length)
+    print(f"切片 {start}-{start+clip_length}秒: {clip_url}")
+```
+
 ### 示例 3: 批量切片
 
 ```python
@@ -159,13 +203,20 @@ def create_clip(file_id: str, start: float, duration: float = None, end: float =
         print(f"切片 {index} 失败: {response.text}")
         return None
 
+# 先上传视频并获取视频信息
+with open("video.mp4", "rb") as f:
+    response = requests.post(f"{BASE_URL}/upload", files={"file": f})
+    data = response.json()
+    file_id = data["file_id"]
+    video_duration = data["video_info"]["duration"]
+    
+    print(f"视频总时长: {video_duration}秒")
+
 # 方式1：使用持续时间批量创建切片（每5秒一个片段）
-file_id = "your_file_id_here"
-video_duration = 60  # 视频总长度60秒
 clip_duration = 5    # 每个切片5秒
 
 segments = []
-for i in range(0, video_duration, clip_duration):
+for i in range(0, int(video_duration), clip_duration):
     segments.append((file_id, i, clip_duration, None, i // clip_duration))
 
 # 方式2：使用起止时间批量创建切片
@@ -262,6 +313,11 @@ curl -X POST "http://localhost:8700/upload" \
   -F "file=@video.mp4"
 ```
 
+### 获取视频信息
+```bash
+curl "http://localhost:8700/video/abc123"
+```
+
 ### 切片视频（使用持续时间，返回文件）
 ```bash
 curl "http://localhost:8700/clip?file_id=abc123&start=10&duration=5&return_type=file" \
@@ -314,7 +370,17 @@ async function uploadVideo(filePath) {
     headers: formData.getHeaders()
   });
   
-  return response.data.file_id;
+  const data = response.data;
+  console.log('File ID:', data.file_id);
+  console.log('视频信息:', data.video_info);
+  
+  return data;
+}
+
+// 获取视频信息
+async function getVideoInfo(fileId) {
+  const response = await axios.get(`${BASE_URL}/video/${fileId}`);
+  return response.data;
 }
 
 // 获取切片URL（支持两种时间方式）
@@ -344,8 +410,14 @@ async function getClipUrl(fileId, start, options = {}) {
 // 使用示例
 (async () => {
   try {
-    const fileId = await uploadVideo('video.mp4');
-    console.log('File ID:', fileId);
+    // 上传视频并获取信息
+    const uploadData = await uploadVideo('video.mp4');
+    const fileId = uploadData.file_id;
+    const videoInfo = uploadData.video_info;
+    
+    console.log(`视频时长: ${videoInfo.duration}秒`);
+    console.log(`分辨率: ${videoInfo.width}x${videoInfo.height}`);
+    console.log(`帧率: ${videoInfo.fps} fps`);
     
     // 方式1：使用持续时间
     const clipUrl1 = await getClipUrl(fileId, 10, { duration: 5 });
@@ -354,6 +426,10 @@ async function getClipUrl(fileId, start, options = {}) {
     // 方式2：使用起止时间
     const clipUrl2 = await getClipUrl(fileId, 10, { end: 15 });
     console.log('Clip URL (10秒到15秒):', clipUrl2);
+    
+    // 查询视频信息
+    const info = await getVideoInfo(fileId);
+    console.log('视频详细信息:', info.video_info);
   } catch (error) {
     console.error('Error:', error.message);
   }

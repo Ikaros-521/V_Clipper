@@ -45,7 +45,7 @@ python app.py
 
 **POST** `/upload`
 
-上传原始视频文件，返回唯一的 file_id。
+上传原始视频文件，返回唯一的 file_id 和视频基本信息。
 
 **请求示例：**
 ```bash
@@ -57,7 +57,60 @@ curl -X POST "http://localhost:8700/upload" \
 ```json
 {
   "file_id": "a1b2c3d4e5f6g7h8",
-  "filename": "video.mp4"
+  "filename": "video.mp4",
+  "is_new": true,
+  "video_info": {
+    "duration": 120.5,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30.0,
+    "codec": "h264",
+    "bitrate_kbps": 5000.0,
+    "size_mb": 75.5
+  }
+}
+```
+
+**响应字段说明：**
+- `file_id`: 视频唯一标识符
+- `filename`: 原始文件名
+- `is_new`: 是否为新上传（false表示文件已存在）
+- `video_info`: 视频详细信息
+  - `duration`: 视频时长（秒）
+  - `width`: 视频宽度（像素）
+  - `height`: 视频高度（像素）
+  - `fps`: 帧率
+  - `codec`: 视频编码格式
+  - `bitrate_kbps`: 比特率（kbps）
+  - `size_mb`: 文件大小（MB）
+
+---
+
+### 1.2. 获取视频信息
+
+**GET** `/video/{file_id}`
+
+根据 file_id 获取已上传视频的详细信息。
+
+**请求示例：**
+```bash
+curl "http://localhost:8700/video/a1b2c3d4e5f6g7h8"
+```
+
+**响应示例：**
+```json
+{
+  "file_id": "a1b2c3d4e5f6g7h8",
+  "filename": "a1b2c3d4e5f6g7h8.mp4",
+  "video_info": {
+    "duration": 120.5,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30.0,
+    "codec": "h264",
+    "bitrate_kbps": 5000.0,
+    "size_mb": 75.5
+  }
 }
 ```
 

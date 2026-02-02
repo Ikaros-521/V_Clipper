@@ -58,6 +58,72 @@ app.mount("/media", StaticFiles(directory=str(SEGMENT_DIR)), name="media")
 def generate_file_id(file_content: bytes):
     return hashlib.sha256(file_content).hexdigest()[:16]
 
+def get_video_info(video_path: Path):
+    """
+    使用 ffprobe 获取视频信息
+    返回: {duration, width, height, fps, codec, bitrate, size_mb}
+    """
+    try:
+        # 使用 ffprobe 获取视频信息（JSON格式）
+        cmd = [
+            "ffprobe",
+            "-v", "quiet",
+            "-print_format", "json",
+            "-show_format",
+            "-show_streams",
+            str(video_path)
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        import json
+        data = json.loads(result.stdout)
+        
+        # 提取视频流信息
+        video_stream = None
+        for stream in data.get("streams", []):
+            if stream.get("codec_type") == "video":
+                video_stream = stream
+                break
+        
+        if not video_stream:
+            return None
+        
+        # 提取关键信息
+        info = {
+            "duration": float(data.get("format", {}).get("duration", 0)),
+            "width": video_stream.get("width", 0),
+            "height": video_stream.get("height", 0),
+            "codec": video_stream.get("codec_name", "unknown"),
+            "size_mb": round(int(data.get("format", {}).get("size", 0)) / 1024 / 1024, 2)
+        }
+        
+        # 计算 FPS
+        fps_str = video_stream.get("r_frame_rate", "0/1")
+        if "/" in fps_str:
+            num, den = map(int, fps_str.split("/"))
+            info["fps"] = round(num / den, 2) if den != 0 else 0
+        else:
+            info["fps"] = float(fps_str)
+        
+        # 比特率
+        bitrate = data.get("format", {}).get("bit_rate")
+        if bitrate:
+            info["bitrate_kbps"] = round(int(bitrate) / 1000, 2)
+        else:
+            info["bitrate_kbps"] = 0
+        
+        return info
+        
+    except subprocess.CalledProcessError as e:
+        logger.error(f"ffprobe 执行失败: {e.stderr}")
+        return None
+    except FileNotFoundError:
+        logger.error("ffprobe 未安装或未在系统PATH中")
+        return None
+    except Exception as e:
+        logger.error(f"获取视频信息失败: {e}")
+        return None
+
 @app.post("/upload", summary="上传原始视频")
 async def upload_video(file: UploadFile = File(...)):
     content = await file.read()
@@ -65,11 +131,53 @@ async def upload_video(file: UploadFile = File(...)):
     
     # 检查是否已存在
     file_path = UPLOAD_DIR / f"{file_id}{Path(file.filename).suffix}"
-    if not file_path.exists():
+    is_new_file = not file_path.exists()
+    
+    if is_new_file:
         with open(file_path, "wb") as f:
             f.write(content)
+        logger.info(f"新视频上传: {file.filename} -> {file_id}")
+    else:
+        logger.info(f"视频已存在: {file_id}")
     
-    return {"file_id": file_id, "filename": file.filename}
+    # 获取视频信息
+    video_info = get_video_info(file_path)
+    
+    # 构建响应
+    response = {
+        "file_id": file_id,
+        "filename": file.filename,
+        "is_new": is_new_file
+    }
+    
+    # 添加视频信息
+    if video_info:
+        response["video_info"] = video_info
+    else:
+        logger.warning(f"无法获取视频信息: {file_id}")
+        response["video_info"] = None
+    
+    return response
+
+@app.get("/video/{file_id}", summary="获取视频信息")
+async def get_video_info_by_id(file_id: str):
+    """根据file_id获取视频的详细信息"""
+    # 查找视频文件
+    source_files = list(UPLOAD_DIR.glob(f"{file_id}.*"))
+    if not source_files:
+        raise HTTPException(status_code=404, detail="未找到对应的视频文件")
+    
+    video_path = source_files[0]
+    video_info = get_video_info(video_path)
+    
+    if not video_info:
+        raise HTTPException(status_code=500, detail="无法获取视频信息，请确保ffprobe已安装")
+    
+    return {
+        "file_id": file_id,
+        "filename": video_path.name,
+        "video_info": video_info
+    }
 
 @app.get("/clip", summary="执行切片并返回文件或URL")
 async def clip_video(

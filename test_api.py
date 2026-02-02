@@ -19,9 +19,49 @@ def test_upload_video(video_path: str):
         print(f"✅ 上传成功")
         print(f"   File ID: {data['file_id']}")
         print(f"   Filename: {data['filename']}")
+        print(f"   是否新文件: {data['is_new']}")
+        
+        if data.get('video_info'):
+            info = data['video_info']
+            print(f"   === 视频信息 ===")
+            print(f"   时长: {info['duration']}秒")
+            print(f"   分辨率: {info['width']}x{info['height']}")
+            print(f"   帧率: {info['fps']} fps")
+            print(f"   编码: {info['codec']}")
+            print(f"   比特率: {info['bitrate_kbps']} kbps")
+            print(f"   大小: {info['size_mb']} MB")
+        else:
+            print(f"   ⚠️  无法获取视频信息（可能ffprobe未安装）")
+        
         return data['file_id']
     else:
         print(f"❌ 上传失败: {response.text}")
+        return None
+
+def test_get_video_info(file_id: str):
+    """测试获取视频信息"""
+    print(f"\n=== 测试获取视频信息 ===")
+    response = requests.get(f"{BASE_URL}/video/{file_id}")
+    
+    if response.status_code == 200:
+        data = response.json()
+        print(f"✅ 获取成功")
+        print(f"   File ID: {data['file_id']}")
+        print(f"   Filename: {data['filename']}")
+        
+        if data.get('video_info'):
+            info = data['video_info']
+            print(f"   === 视频信息 ===")
+            print(f"   时长: {info['duration']}秒")
+            print(f"   分辨率: {info['width']}x{info['height']}")
+            print(f"   帧率: {info['fps']} fps")
+            print(f"   编码: {info['codec']}")
+            print(f"   比特率: {info['bitrate_kbps']} kbps")
+            print(f"   大小: {info['size_mb']} MB")
+        
+        return data
+    else:
+        print(f"❌ 获取失败: {response.text}")
         return None
 
 def test_clip_video_file(file_id: str, start: float, duration: float = None, end: float = None):
@@ -151,6 +191,9 @@ def main():
         file_id = test_upload_video(video_path)
         
         if file_id:
+            # 测试获取视频信息
+            test_get_video_info(file_id)
+            
             # 测试切片（使用持续时间）
             test_clip_video_file(file_id, start=0, duration=5)
             
