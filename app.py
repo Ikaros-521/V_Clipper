@@ -192,7 +192,8 @@ async def clip_video(
     scale: Optional[str] = Query(DEFAULT_SCALE, description="分辨率缩放，如 480:-1"),
     fps: Optional[int] = Query(DEFAULT_FPS, description="目标帧率"),
     crf: Optional[int] = Query(DEFAULT_CRF, description="质量控制 (0-51，越小质量越高)"),
-    preset: Optional[str] = Query(DEFAULT_PRESET, description="编码速度预设")
+    preset: Optional[str] = Query(DEFAULT_PRESET, description="编码速度预设"),
+    keep_audio: bool = Query(True, description="是否保留音频，默认保留")
 ):
     # 0. 参数验证：duration 和 end 必须提供其中一个
     if duration is None and end is None:
@@ -240,7 +241,7 @@ async def clip_video(
     # 2. 如果切片不存在，执行切片
     if not output_path.exists():
         # 3. 构建极速切片命令
-        # 针对 VLM 优化：降分辨率、降帧、无音频、极速预设
+        # 针对 VLM 优化：降分辨率、降帧、极速预设
         # 注意：scale 中的 -1 需要替换为 -2，确保输出尺寸为偶数（H.264 要求）
         safe_scale = scale.replace("-1", "-2")
         cmd = [
@@ -252,9 +253,16 @@ async def clip_video(
             "-c:v", "libx264",
             "-preset", preset,
             "-crf", str(crf),
-            "-an",  # 默认禁掉音频，VLM 不需要
-            str(output_path)
         ]
+        
+        # 根据参数决定是否保留音频
+        if not keep_audio:
+            cmd.append("-an")  # 禁用音频
+        else:
+            # 保留音频，使用 AAC 编码
+            cmd.extend(["-c:a", "aac", "-b:a", "128k"])
+        
+        cmd.append(str(output_path))
 
         try:
             # 运行 FFmpeg
