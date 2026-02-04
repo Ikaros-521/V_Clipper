@@ -29,7 +29,7 @@ except ImportError:
     SEGMENT_DIR = BASE_DIR / "segments"
     CLEANUP_INTERVAL_HOURS = 1
     FILE_EXPIRY_HOURS = 2
-    DEFAULT_SCALE = "480:-1"
+    DEFAULT_SCALE = "480:-2"
     DEFAULT_FPS = 10
     DEFAULT_CRF = 28
     DEFAULT_PRESET = "ultrafast"
@@ -241,12 +241,14 @@ async def clip_video(
     if not output_path.exists():
         # 3. 构建极速切片命令
         # 针对 VLM 优化：降分辨率、降帧、无音频、极速预设
+        # 注意：scale 中的 -1 需要替换为 -2，确保输出尺寸为偶数（H.264 要求）
+        safe_scale = scale.replace("-1", "-2")
         cmd = [
             "ffmpeg", "-y",
             "-ss", str(start),
             "-t", str(actual_duration),
             "-i", str(video_path),
-            "-vf", f"scale={scale},fps={fps}",
+            "-vf", f"scale={safe_scale},fps={fps}",
             "-c:v", "libx264",
             "-preset", preset,
             "-crf", str(crf),
